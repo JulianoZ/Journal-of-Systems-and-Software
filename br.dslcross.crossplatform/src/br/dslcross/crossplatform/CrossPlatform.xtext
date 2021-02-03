@@ -1,0 +1,364 @@
+grammar br.dslcross.crossplatform.CrossPlatform with org.eclipse.xtext.common.Terminals
+
+generate crossPlatform "http://www.dslcross.br/crossplatform/CrossPlatform"
+
+Domainmodel:
+	(elements+=AbstractElement)*;
+
+AbstractElement:
+	PackageDeclaration | Type | Import;
+
+PackageDeclaration:
+	'package' name=QualifiedName '{'
+	(elements+=AbstractElement)*
+	'}';
+
+QualifiedName:
+	ID ('.' ID)*;
+
+Import:
+	'import' importedNamespace=QualifiedNameWithWildcard;
+
+QualifiedNameWithWildcard:
+	QualifiedName '.*'?;
+
+Type:
+	DataType | Entity | Deploy | PlatformDecl | GlobalOld | GlobalEntity | Global; //PlatformEsp: plataforma específica
+
+//--------------------------Estrutura geração manual de operações------------------------------      
+PlatformDecl: //platformEsp especifica as plataformas e qual linguagem será usado. O name determina o nome da classe
+	'platform' name=ID ':' Base=('Java' | 'Swift' | 'CPlusPlus' | 'CSharp') '{' 
+	  cmdList+=CommandPlat* 
+	'}';
+
+/* Seção Global (Declaração)--------------------------------------------------------------------------------------------------------*/
+
+GlobalOld:
+  'globalOld' ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')? 
+  name=ID '(' (params+=Parameter (',' params+=Parameter)*)? ')' ':' type=DSLTypeRef ('<'genericTypesDecl=DSLGenericType'>')? (col1='[')?(array=INT)?(col2=']')?;
+
+GlobalEntity:
+  'globalDetails' ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')? name=ID;
+  
+Global:
+  'global' ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')?  name=ID '(' (params+=Parameter (',' params+=Parameter)*)? ')' ':' type=DSLTypeRef ('<'genericTypesDecl=DSLGenericType'>')?;  
+
+
+/* Deploy--------------------------------------------------------------------------------------------------------*/
+Deploy:
+	'deploy' name=ID '{' (entityToDeploy+=Platform)* '}';
+
+Platform:
+	ent=[Entity] ':' plat=[PlatformDecl] (':' Communication=('Input' | 'Output' | 'InOut') (':'
+	EntityEspecification=EntityEsp)?)?;
+
+EntityEsp:
+	EspEnt+=[Entity]; //Especificação das entidades esperadas como entrada
+	
+/*Deploy--------------------------------------------------------------------------------------------------------*/	
+
+DataType:
+	'datatype' name=ID ('[')?(array=INT)?(']')? ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')? ;
+                                                
+	  
+Entity: //Colocar uma entidade para cada plataforma, criando uma gramática para cada plataforma e permitindo funções específicas para cada plataforma  
+	'class' name=ID ('extends' superType=[Entity])? '{'	
+	features += CommandFeature*
+	'}';
+	
+CommandFeature:
+	Attribute  | Operation | OperationGlobCallOld | EntityGlobCall | OperationGlobCall | StringTemplateFreeCod | CallAttributeObject; //AssignmentCmd;  
+
+CommandPlat:
+	Attribute | Operation  | OperationGlobalOld | EntityGlobal | OperationGlobal; 
+	
+OperationGlobCallOld: //CommandEntity
+	'usesGlobalOld' 
+	('<' concreteTypes+=[Type] (',' concreteTypes+=[Type])* '>')?	
+	opGlobCall=[GlobalOld] '(' (params+=Parameter (',' params+=Parameter)*)? ')' ':' typeGlobal=DSLTypeRef ('<'genericTypesDecl=[Type]'>')? (col1='[')?(array=INT)?(col2=']')?;
+	
+EntityGlobCall: //CommandEntity
+	'usesGlobalDetails' ('<' concreteTypes+=[Type] (',' concreteTypes+=[Type])* '>')? opGlobCall=[GlobalEntity];
+	
+OperationGlobCall: //CommandEntity
+	'usesGlobal' ('<' concreteTypes+=[Type] (',' concreteTypes+=[Type])* '>')? ('[' paramList+=ParamList (',' paramList+=ParamList)* ']')? opGlobCall=[Global]'(' (params+=Parameter (',' params+=Parameter)*)? ')' (':' typeGlobal=DSLTypeRef)? ('<'genericTypesDecl=[Type]'>')? (col1='[')?(array=INT)?(col2=']')? ('{' cmdList+=CommandOperation* '}')?;	 	 			
+
+Operation:
+	'operation' (paramExtra=ExprArit)? name=ID '(' (params+=Parameter (',' params+=Parameter)*)? ')' (':' type=DSLTypeRef ('<' genericTypesDecl+=[Type] (',' genericTypesDecl+=[Type])* '>')? (col1='[')?(array=INT)?(col2=']')?)? '{'	
+	cmdList+=CommandOperation* '}';
+	
+OperationGlobalOld:
+	'implementsGlobalOld' ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')?	
+	opGlobal=[GlobalOld]'(' (params+=Parameter (',' params+=Parameter)*)? ')' ':' type=DSLTypeRef ('<'genericTypesDecl=DSLGenericType'>')? (col1='[')?(array=INT)?(col2=']')? '{'	
+	 cmdList+=CommandOperation* '}';	 
+	 
+	 
+EntityGlobal:
+	'implementsGlobalDetails' ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')? opGlobal=[GlobalEntity] '{'	
+	 cmdList+=CommandOperation* '}';
+	 
+	 
+OperationGlobal:
+	'implementsGlobal' ('<' genericTypes+=DSLGenericType (',' genericTypes+=DSLGenericType)* '>')? ('[' paramList+=ParamList (',' paramList+=ParamList)* ']')? opGlobal=[Global]'(' (params+=Parameter (',' params+=Parameter)*)? ')' ':' type=DSLTypeRef ('<'genericTypesDecl=DSLGenericType'>')? (col1='[')?(array=INT)?(col2=']')? '{'	
+	 cmdList+=CommandOperation* '}'; 	 	
+
+Attribute: // mudar para AttributeDecl
+	(many?='many')? name=ID ':' type=[Type] ('[')?(arrayAllow=INT)?(']')? ('<'concreteTypes+=[Type] (',' concreteTypes+=[Type])? '>')?;
+	
+ParamList:
+	name=ID;
+	
+
+/***********************Implementação dos tipos concretos e genéricos****************/	
+DSLTypeRef: 
+	DSLConcreteTypeRef |
+	DSLGenericTypeRef;	
+	
+DSLConcreteTypeRef:
+	ref=[Type]; 
+	//(lc='List')? ref=[Type]; 
+
+DSLGenericTypeRef:
+	'<' ref=[DSLGenericType] '>';
+	//n='<' ref=[DSLGenericType] '>' |
+	//lg='List<' ref=[DSLGenericType] '>';
+
+
+	
+DSLGenericType:
+	name=ID
+;	
+/***********************Implementação dos tipos concretos e genéricos****************/
+
+
+Parameter:
+	name=ID ':' type=DSLTypeRef (col1='[')?(array=INT)?(col2=']')? ('<' ref=[Type] '>')?;
+
+CommandOperation:
+//	AssignmentCmd         | /* Permite a criação de uma expressão aritmética complexa */
+	Attribute             | /*DeclCommand:*/
+	StringTemplateFreeCod | /* Permite a escrita livre de códigos dentro do método */	
+	AbrevCmd              | /* Expressões abreviadas para o laço de repetição ou corpo da programação */
+	MethodCallCmd         | /* Simula a instância de um método de alguma classe */
+//	MethodCallKClassReal  | /* Obtem o retorno de um método que foi previamente criado */
+	MethodCallGlobal      | /* Obtem o retorno de um método global ou método normal sem retorno*/	
+	CallAttributeObject   | /*Substitui o AssignmentCmd e o MethodCallKClassReal. Permite passar um valor diretamente para um atributo de uma classe */	
+	OpLogicoWhile         | /* Permite o uso do laço While */
+	OpLogicoDoWhile       | /* Permite o uso do laço Do While */
+	OpLogicoIF            | /* Permite o uso do IF Else */
+	OpLogicoFor           | /* Permite o uso do FOR Else */
+//	ReturnCommand         | /* Permite a adição de retorno */
+	EntityGlobCall        | /* Permite o uso de uma chamada global de um método dentro de um outro método global */
+	SpecialCommand
+	;
+	
+	
+SpecialCommand:
+	command = 'break' |
+	'return' attr=[Attribute] |
+	 commandCont = 'continue'
+;	
+
+
+StringTemplateFreeCod:
+	value+=STRINGTEMPLATE;
+	
+AbrevCmd:
+	expr1=[Attribute] OpIn=('++' | '--') | expr2=[Attribute] OpIn=('+=' | '-=') expr3=ExprArit | AssignmentCmdFor;
+	
+
+MethodCallCmd:
+    //obj=ID '.' call=ID '(' (args+=AttributeCall (',' args+=AttributeCall)*)? ')';
+    obj=ID ('.' call+=ID ('(' (args+=AttributeCall (',' args+=AttributeCall)*)? ')')*)+;
+
+
+
+Vector: {Vector}
+	(col1='[')?(array=INT)?(col2=']')?;
+
+	
+CallAttributeObject:
+	obj=AttribID ('.' call+=AttribID )* ':=' e=ExprArit;
+	//obj=[Attribute] '.' call=[Attribute] ':=' (args+=AttributeCall ('.' args+=AttributeCall)*)?;
+	//obj=[Attribute] '.' call=[Attribute] ':=' (args+=AttributeCall ('.' args+=AttributeCall)*)?;	
+	//vAtr1=ID ('.'vAtr2+=ID)+ ':=' e=ID;
+	//obj = ID ':=' vAtr1=ID ('.'vAtr2+=ID)+
+	//obj=[Attribute] '#' call=[Attribute];
+	//vAtr1=ID ('.'vAtr2+=ID)+ ':=' call=ExprArit;
+	//vAtr1=ID ('.'vAtr2+=ID)+ ':=' call=DSLGenericType;
+	//vAtr1=ID ('.'vAtr2+=ID)+ ':=' call=[DSLGenericType];
+	//vAtr1=ID ('.'vAtr2+=ID)+ ':=' name=ID;
+	//obj=[Attribute] '.' call=[Attribute] ':=' e=ID;
+	//obj=[Attribute] '.' call=[Attribute] ':=' e=Parameter;
+	
+
+//MethodCallKClassReal:
+//	x=ID ':=' obj=[Entity] '.' call=[Operation] '(' (params+=Parameter (',' params+=Parameter)*)? ')'//A classe está reconhecendo bem. Mas só reconhece os métodos dentro da própria classe
+//;
+
+//AssignmentCmd:	
+//	left=[Attribute] v=Vector ':=' e=ExprArit;
+
+//ReturnCommand:
+//	'return' attr=[Attribute]
+//;
+
+
+MethodCallGlobal:
+	call1=MethodCallGlob | call2=MethodCallOp
+;
+
+OpLogicoWhile:
+	left=ComLog e=ExprLogica '{' cmdList+=CommandOperation* '}';
+
+OpLogicoDoWhile:
+	'Do{' cmdList+=CommandOperation* '}While' e=ExprLogica;
+
+OpLogicoIF:
+	'If' e=ExprLogica '{' cmdList+=CommandOperation* '}' (opElseIf+=OpElseIf)* (opElse+=OpElse)?;
+
+OpElseIf:
+	'ElseIf' expLog=ExprLogica '{' cmdList+=CommandOperation* '}';
+
+OpElse:
+	{OpElse} 'Else' '{' cmdList+=CommandOperation* '}';
+
+//-----------Operação lógica -------------------	
+ExprLogica:
+	termos+=TermoLogico (oplog+=('||') termos+=TermoLogico)*;
+
+TermoLogico:
+	fatores+=FatorLogico (oplog+=('&&') fatores+=FatorLogico)*;
+
+FatorLogico:
+	{FatorLogico}( 
+	(n='!')? v=[Attribute]    		                                                  |	
+	(n='!')? op1='true'                                                               | 
+	(n='!')? op2='false'                                                              | 
+	'(' exprLog=ExprLogica ')'	                                                      |	                  
+	(n='!')? expr1=ExprL OpRel=('>' | '>=' | '<' | '<=' | '==' | '<>') expr2=ExprL)   
+	
+	;
+
+ComLog:
+	{ComLog} (comLog=('While'));
+
+ExprL: {ExprL}(
+	//v=[Attribute] (col1='[')?(array=INT)?(col2=']')? | i=INT ('.')? (iD = INT)? | vAtr1=[Attribute]('.'vAtr2+=AttribList)+); //vAtr1=[Attribute]'.'vAtr2=[Attribute];  //vAttribute=Attribute ('.' vAttributeL+=AttribList)*);
+	v=ID (col1='[')?(array=INT)?(col2=']')? | i=INT ('.')? (iD = INT)? | vAtr1=ID('.'vAtr2+=AttribID)+) | strVar=STRING | opLog = 'true' | opLog = 'false'; 
+
+AttribID: 
+	name=ID v=Vector;
+	
+ 	
+
+
+//-----------Operação lógica  -------------------	
+
+//-----------Operação lógica | For -------------------	
+
+OpLogicoFor:
+	'For' exprLogic=ExprLogicFor '{' cmdList+=CommandOperation* '}';
+
+ExprLogicFor:
+	inicio=AssignmentCmdFor ',' condicao=ExprLogica ',' abrevCmd=CommandOperation | '(' inicio=AssignmentCmdFor ','
+	condicao=ExprLogica ',' abrevCmd=CommandOperation ')';
+
+AssignmentCmdFor:
+	left=[Attribute] '=' e=ExprArit;
+
+//-----------Operação lógica | For -------------------
+
+//-----------Operação aritimética -------------------
+ExprArit:
+	termos+=Termo (op+=('+' | '-') termos+=Termo)*;
+
+Termo:
+	fatores+=Fator (op+=('*' | '/') fatores+=Fator)*;
+
+Fator:
+	{Fator} (
+		p=Parameter                                        |
+		//v=[Attribute] (col1='[')?(array=INT)?(col2=']')? |                              |
+		v=ID (col1='[')?(array=INT)?(array2=ID)?(col2=']')?|		
+		d=DECIMAL                                          | 
+		strVar=STRING                                      | 
+		mcOperation=MethodCallOp                           | 
+		mcGlobal=MethodCallGlob                            |
+		'(' expr=ExprArit ')'                              |
+		vAtr1=AttribID ('.' vAtr2+=AttribID (col+='(' (value+=ExprL (',' value+=ExprL)*)? ')')? )+
+		//vAtr1=[Attribute] ('.' vAtr2+=AttribID (col+='(' (value+=ExprL (',' value+=ExprL)*)? ')')? )+		
+		//vAtr1=[Attribute] ('.'vAtr2+=AttribList (col+='(' value+=ExprL (',' value+=ExprL)* ')')? )+		                         
+	     //vAtr1=[Attribute] ('.'vAtr2+=AttribID (col+='(' value+=ExprL (',' value+=ExprL)* ')')? )+          //vAtr1=[Attribute]('.'vAtr2+=AttribID)+); ('.' call+=ID ('('value+=INT')')? )+
+	     //vAtr1=[Attribute] '.' vAtr2=AttribID '|' (vAtr3+=ExprL2)? ')'  
+	     //mCallCmd=MethodCallCmd	     
+	     //obj=ID ('.' call=ID ('(' (args+=AttributeCall (',' args+=AttributeCall)*)? ')')*)+;	    
+	     //vAtr1=[Attribute] ('.'vAtr2+=AttribID (col+='(' value+=Params ')')? )+
+	     //vAtr1=[Attribute] exp = expressionList
+	     //(params+=Parameter (',' params+=Parameter)*)? 
+	                   
+	);
+	
+	
+	
+OpLogico:
+	op1='true'    | 
+	op2='false';	
+	
+	
+/*ExprL2: 	 
+	 vAtr1=ID (','vAtr2+=ID)*;*/	
+	
+
+/*
+expressionList: 
+	e1=ExprL ('.' e2+=ExprL )* '(' value+=ExprL (',' value+=ExprL)* ')'
+;
+
+//https://github.com/antlr/grammars-v4/blob/master/java/JavaParser.g4
+*/
+
+/*
+Params:
+	MultParam |
+	EmptyParam	
+; 	
+
+MultParam: 
+	value+=ExprL (',' value+=ExprL)*
+;
+
+EmptyParam: 
+	value = '('	
+; 
+
+*/
+
+ 
+
+MethodCallOp:
+	 //'call' calledOp=[Operation] '(' ')';
+	 call=[Operation] '(' (args+=AttributeCall (',' args+=AttributeCall)*)? ')'; //obj=[Entity] '.' call=[Operation] '(' (params+=Parameter (',' params+=Parameter)*)? ')'
+
+	 
+
+MethodCallGlob:
+	 //'call' calledOp=[OperationGlobCallOld] '(' ')';
+	 'global' (obj=[Attribute] '.')? calledOpGlobal=[Global] '(' (args+=AttributeCall (',' args+=AttributeCall)*)? ')'
+;
+
+AttributeCall:
+     name=ID (col1='[')?(array=INT)?(col2=']')? ('.'vAtr2+=AttribID (col+='(' value+=ExprL ')')? )*;     
+
+
+Expr:
+	INT;
+
+
+//-----------Operação aritimética -------------------  	 
+
+terminal STRINGTEMPLATE: //Permite o desenvolvimento do código com aspas pelo desenvolvedor
+	'\'\'\'' .* '\'\'\'';
+
+DECIMAL: 
+	 INT ('.')? (INT)?;
